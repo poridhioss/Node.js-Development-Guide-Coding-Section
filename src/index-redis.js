@@ -1,11 +1,13 @@
+require("dotenv").config(); // ✅ Load env vars first
+
 const express = require("express");
 const { AppDataSource } = require("./data-source");
 const { User } = require("./entity/User");
 const redis = require("redis");
 
-// Initialize Redis client
+// ✅ Initialize Redis client from .env
 const redisClient = redis.createClient({
-  url: 'redis://localhost:6379' // Adjust URL if your Redis is hosted elsewhere
+  url: `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`,
 });
 
 redisClient.on('error', (err) => console.log('Redis Client Error', err));
@@ -13,7 +15,7 @@ redisClient.connect();
 
 AppDataSource.initialize()
   .then(async () => {
-    console.log("Data Source has been initialized!");
+    console.log("✅ Data Source has been initialized!");
 
     const app = express();
     app.use(express.json());
@@ -22,7 +24,7 @@ AppDataSource.initialize()
       res.send("Hello World!");
     });
 
-    // POST /users (Create a user)
+    // ✅ Create user
     app.post("/users", async (req, res) => {
       try {
         const user = AppDataSource.manager.create(User, {
@@ -31,8 +33,7 @@ AppDataSource.initialize()
         });
 
         await AppDataSource.manager.save(User, user);
-        // Invalidate users cache
-        await redisClient.del('users');
+        await redisClient.del('users'); // Invalidate cache
         res.send("User saved");
       } catch (err) {
         console.error(err);
@@ -40,19 +41,16 @@ AppDataSource.initialize()
       }
     });
 
-    // GET /users (Fetch all users with Redis caching)
+    // ✅ Get users (with Redis caching)
     app.get("/users", async (req, res) => {
       try {
-        // Check Redis cache first
         const cachedUsers = await redisClient.get('users');
         if (cachedUsers) {
           return res.send(JSON.parse(cachedUsers));
         }
 
-        // If not in cache, fetch from database
         const users = await AppDataSource.manager.find(User);
-        // Store in Redis with 1 hour expiration
-        await redisClient.setEx('users', 3600, JSON.stringify(users));
+        await redisClient.setEx('users', 3600, JSON.stringify(users)); // Cache 1hr
         res.send(users);
       } catch (err) {
         console.error(err);
@@ -60,7 +58,7 @@ AppDataSource.initialize()
       }
     });
 
-    // PUT /users/:id (Update user by ID)
+    // ✅ Update user
     app.put("/users/:id", async (req, res) => {
       try {
         const user = await AppDataSource.manager.findOne(User, {
@@ -71,8 +69,7 @@ AppDataSource.initialize()
           user.name = req.body.name;
           user.email = req.body.email;
           await AppDataSource.manager.save(User, user);
-          // Invalidate users cache
-          await redisClient.del('users');
+          await redisClient.del('users'); // Invalidate cache
           res.send("User updated");
         } else {
           res.status(404).send("User not found");
@@ -83,7 +80,7 @@ AppDataSource.initialize()
       }
     });
 
-    // DELETE /users/:id (Delete user by ID)
+    // ✅ Delete user
     app.delete("/users/:id", async (req, res) => {
       try {
         const user = await AppDataSource.manager.findOne(User, {
@@ -92,8 +89,7 @@ AppDataSource.initialize()
 
         if (user) {
           await AppDataSource.manager.remove(User, user);
-          // Invalidate users cache
-          await redisClient.del('users');
+          await redisClient.del('users'); // Invalidate cache
           res.send("User deleted");
         } else {
           res.status(404).send("User not found");
@@ -104,14 +100,16 @@ AppDataSource.initialize()
       }
     });
 
-    app.listen(3000, () => {
-      console.log("Server is running on port 3000");
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => {
+      console.log(`🚀 Server is running on port ${PORT}`);
     });
   })
-  .catch((error) => console.log("Error during Data Source initialization:", error));
+  .catch((error) => console.log("❌ Error during Data Source initialization:", error));
 
-// Graceful shutdown
+// ✅ Graceful shutdown
 process.on('SIGTERM', async () => {
+  console.log("Shutting down...");
   await redisClient.quit();
   process.exit(0);
 });
